@@ -4471,7 +4471,7 @@ def get_ema_args(args):
             value = ast.literal_eval(value)
             ema_kwargs[key] = value
 
-    ema_args_str = ",".join([f"{k}={v}" for k, v in ema_kwargs.items()])
+    ema_args_str = ",".join([f"{k}={v}" for k, v in ema_kwargs.items()]) # for lora metadata
     logger.info(f"EMA args: {ema_kwargs}")
 
     return ema_kwargs, ema_args_str

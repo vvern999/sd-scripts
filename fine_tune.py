@@ -40,7 +40,7 @@ from library.custom_train_functions import (
     apply_debiased_estimation,
 )
 import library.strategy_sd as strategy_sd
-
+from ema_pytorch import EMA
 
 def train(args):
     train_util.verify_training_args(args)
@@ -269,6 +269,11 @@ def train(args):
         unet.to(weight_dtype)
         text_encoder.to(weight_dtype)
 
+    if args.enable_ema:
+        logger.info("creating EMA for unet")
+        ema_kwargs, _ = train_util.get_ema_args(args)
+        ema = EMA(unet, **ema_kwargs)
+
     if args.deepspeed:
         if args.train_text_encoder:
             ds_model = deepspeed_utils.prepare_deepspeed_model(args, unet=unet, text_encoder=text_encoder)
@@ -424,6 +429,9 @@ def train(args):
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
+                
+                if args.enable_ema:
+                    ema.update()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -474,6 +482,10 @@ def train(args):
             accelerator.log(logs, step=epoch + 1)
 
         accelerator.wait_for_everyone()
+
+        if args.enable_ema and global_step > ema.update_after_step:
+            logger.info(f"switching EMA. current decay = {ema.get_current_decay():.5f} ")
+            ema.update_model_with_ema()
 
         if args.save_every_n_epochs is not None:
             if accelerator.is_main_process:

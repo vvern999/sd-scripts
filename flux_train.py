@@ -48,7 +48,7 @@ from library.config_util import (
     BlueprintGenerator,
 )
 from library.custom_train_functions import apply_masked_loss, add_custom_train_arguments
-
+from ema_pytorch import EMA
 
 def train(args):
     train_util.verify_training_args(args)
@@ -438,6 +438,11 @@ def train(args):
         t5xxl.to(accelerator.device)
 
     clean_memory_on_device(accelerator.device)
+
+    if args.enable_ema:
+        logger.info("creating EMA ")
+        ema_kwargs, _ = train_util.get_ema_args(args)
+        ema = EMA(flux, **ema_kwargs)
 
     if args.deepspeed:
         ds_model = deepspeed_utils.prepare_deepspeed_model(args, mmdit=flux)
@@ -838,6 +843,9 @@ def train(args):
                         for i in range(1, len(optimizers)):
                             lr_schedulers[i].step()
 
+                if args.enable_ema:
+                    ema.update()
+
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -886,6 +894,11 @@ def train(args):
         accelerator.wait_for_everyone()
 
         optimizer_eval_fn()
+
+        if args.enable_ema and global_step > ema.update_after_step:
+            logger.info(f"switching EMA. current decay = {ema.get_current_decay():.5f} ")
+            ema.update_model_with_ema()
+
         if args.save_every_n_epochs is not None:
             if accelerator.is_main_process:
                 flux_train_utils.save_flux_model_on_epoch_end_or_stepwise(

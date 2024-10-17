@@ -44,7 +44,7 @@ from library.custom_train_functions import (
     apply_masked_loss,
 )
 from library.sdxl_original_unet import SdxlUNet2DConditionModel
-
+from ema_pytorch import EMA
 
 UNET_NUM_BLOCKS_FOR_BLOCK_LR = 23
 
@@ -570,6 +570,11 @@ def train(args):
                         parameter_optimizer_map[parameter] = opt_idx
                         num_parameters_per_group[opt_idx] += 1
 
+    if args.enable_ema and train_unet:
+        logger.info("creating EMA for unet")
+        ema_kwargs, _ = train_util.get_ema_args(args)
+        ema = EMA(accelerator.unwrap_model(unet), **ema_kwargs)
+
     # epoch数を計算する
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
@@ -760,6 +765,9 @@ def train(args):
                         for i in range(1, len(optimizers)):
                             lr_schedulers[i].step()
 
+                if args.enable_ema and train_unet:
+                    ema.update()
+
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -824,6 +832,10 @@ def train(args):
             accelerator.log(logs, step=epoch + 1)
 
         accelerator.wait_for_everyone()
+
+        if args.enable_ema and train_unet and global_step > ema.update_after_step:
+            logger.info(f"switching EMA. current decay = {ema.get_current_decay():.5f} ")
+            ema.update_model_with_ema()
 
         if args.save_every_n_epochs is not None:
             if accelerator.is_main_process:

@@ -615,6 +615,7 @@ class NetworkTrainer:
             else:
                 pass  # if text_encoder is not trained, no need to prepare. and device and dtype are already set
 
+            ema_args_str = ""
             if args.enable_ema:
                 logger.info("creating EMA")
                 ema_kwargs, ema_args_str = train_util.get_ema_args(args)
@@ -1273,6 +1274,7 @@ class NetworkTrainer:
             # 指定エポックごとにモデルを保存
             optimizer_eval_fn()
 
+            # copy ema to model at the end of each epoch
             if args.enable_ema and global_step > ema.update_after_step:
                 logger.info(f"switching EMA. current decay = {ema.get_current_decay():.5f} ")
                 ema.update_model_with_ema()
