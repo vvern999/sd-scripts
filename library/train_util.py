@@ -3942,6 +3942,19 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--output_config", action="store_true", help="output command line args to given .toml file / 引数を.tomlファイルに出力する"
     )
 
+    parser.add_argument(
+        "--enable_ema",
+        action="store_true",
+        help="enable EMA "
+    )
+    parser.add_argument(
+        "--ema_args",
+        type=str,
+        default=None,
+        nargs="*",
+        help='additional arguments for EMA (like "beta=0.95" "update_after_step=100" "power=0.75" "update_model_with_ema_beta=0...). Available arguments: https://github.com/lucidrains/ema-pytorch/blob/main/ema_pytorch/ema_pytorch.py#L43 ',
+    )
+
     # SAI Model spec
     parser.add_argument(
         "--metadata_title",
@@ -4441,6 +4454,27 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
     logger.info(args.config_file)
 
     return args
+
+
+def get_ema_args(args):
+    # change some defaults
+    ema_kwargs = {"beta": 0.95,
+                  "update_after_step": 100,
+                  "update_every": 5,
+                  "include_online_model": False,
+                  "allow_different_devices": True
+                  }
+
+    if args.ema_args is not None and len(args.ema_args) > 0:
+        for arg in args.ema_args:
+            key, value = arg.split("=")
+            value = ast.literal_eval(value)
+            ema_kwargs[key] = value
+
+    ema_args_str = ",".join([f"{k}={v}" for k, v in ema_kwargs.items()])
+    logger.info(f"EMA args: {ema_kwargs}")
+
+    return ema_kwargs, ema_args_str
 
 
 # endregion

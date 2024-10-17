@@ -18,6 +18,7 @@ easygui==0.98.3
 toml==0.10.2
 voluptuous==0.13.1
 huggingface-hub==0.24.5
+ema-pytorch
 # for Image utils
 imagesize==1.4.1
 # for BLIP captioning

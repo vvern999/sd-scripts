@@ -15,6 +15,8 @@ from tqdm import tqdm
 import torch
 from library.device_utils import init_ipex, clean_memory_on_device
 
+from ema_pytorch import EMA
+
 init_ipex()
 
 from accelerate.utils import set_seed
@@ -613,6 +615,11 @@ class NetworkTrainer:
             else:
                 pass  # if text_encoder is not trained, no need to prepare. and device and dtype are already set
 
+            if args.enable_ema:
+                logger.info("creating EMA")
+                ema_kwargs, ema_args_str = train_util.get_ema_args(args)
+                ema = EMA(network, **ema_kwargs)
+
             network, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
                 network, optimizer, train_dataloader, lr_scheduler
             )
@@ -771,6 +778,8 @@ class NetworkTrainer:
             "ss_huber_c": args.huber_c,
             "ss_fp8_base": bool(args.fp8_base),
             "ss_fp8_base_unet": bool(args.fp8_base_unet),
+            "ss_enable_ema": bool(args.enable_ema),
+            "ss_ema_args": f"({ema_args_str})" if len(ema_args_str) > 0 else "",
         }
 
         self.update_metadata(metadata, args)  # architecture specific metadata
@@ -1200,6 +1209,9 @@ class NetworkTrainer:
                     lr_scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
 
+                    if args.enable_ema:
+                        ema.update()
+
                 if args.scale_weight_norms:
                     keys_scaled, mean_norm, maximum_norm = accelerator.unwrap_model(network).apply_max_norm_regularization(
                         args.scale_weight_norms, accelerator.device
@@ -1260,6 +1272,11 @@ class NetworkTrainer:
 
             # 指定エポックごとにモデルを保存
             optimizer_eval_fn()
+
+            if args.enable_ema and global_step > ema.update_after_step:
+                logger.info(f"switching EMA. current decay = {ema.get_current_decay():.5f} ")
+                ema.update_model_with_ema()
+
             if args.save_every_n_epochs is not None:
                 saving = (epoch + 1) % args.save_every_n_epochs == 0 and (epoch + 1) < num_train_epochs
                 if is_main_process and saving:
