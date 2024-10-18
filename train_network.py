@@ -1275,7 +1275,7 @@ class NetworkTrainer:
             optimizer_eval_fn()
 
             # copy ema to model at the end of each epoch
-            if args.enable_ema and global_step > ema.update_after_step:
+            if args.enable_ema and global_step > ema.update_after_step and ema.update_model_with_ema_every is None:
                 logger.info(f"switching EMA. current decay = {ema.get_current_decay():.5f} ")
                 ema.update_model_with_ema()
 
@@ -1306,6 +1306,10 @@ class NetworkTrainer:
 
         accelerator.end_training()
         optimizer_eval_fn()
+
+        if args.enable_ema:
+            logger.info(f"copying EMA at the end of training ")
+            ema.update_model_with_ema(decay=0.)
 
         if is_main_process and (args.save_state or args.save_state_on_train_end):
             train_util.save_state_on_train_end(args, accelerator)
